@@ -37,6 +37,9 @@ When training, the two led on the Voice Recognition Module can benefit your trai
 ![image](https://github.com/user-attachments/assets/c97f5e92-115b-4f39-92dd-a11220c6f4dd)
 
 
+PROJECT RESULTS:
+
+![image](https://github.com/user-attachments/assets/657a69dd-6770-4ed8-9c27-add5d4f5d289)
 
 
 
