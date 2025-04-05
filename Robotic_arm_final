@@ -1,0 +1,335 @@
+#include <SoftwareSerial.h>
+#include "VoiceRecognitionV3.h"
+#include <Servo.h>
+
+Servo base;  // create servo object to control a servo
+Servo arm1;
+Servo arm2;
+Servo arm3;
+Servo arm4;
+Servo palm;
+
+
+VR myVR(8, 7);   // 7:RX 8:TX, you can choose your favourite pins.
+
+uint8_t records[7]; // save record
+uint8_t buf[64];
+
+int led = 13;
+int anglep = 0;  // initial angle of palm servo (servo used as fingers)
+int anglet = 90;  // fifth servo (servo before palm)
+int anglew = 90;  // fourth servo
+int anglee = 90;  // third servo
+int anglec = 90;  // initial angle of servo after base (second servo)
+int angleb = 30;  // initial angle of base servo (servo on the bottom)
+
+#define onRecord    (0)
+#define offRecord   (1)
+#define liqRecord   (2)
+
+void printSignature(uint8_t *buf, int len)
+{
+  int i;
+  for (i = 0; i < len; i++) {
+    if (buf[i] > 0x19 && buf[i] < 0x7F) {
+      Serial.write(buf[i]);
+    }
+    else {
+      Serial.print("[");
+      Serial.print(buf[i], HEX);
+      Serial.print("]");
+    }
+  }
+}
+
+void printVR(uint8_t *buf)
+{
+  Serial.println("VR Index\tGroup\tRecordNum\tSignature");
+
+  Serial.print(buf[2], DEC);
+  Serial.print("\t\t");
+
+  if (buf[0] == 0xFF) {
+    Serial.print("NONE");
+  }
+  else if (buf[0] & 0x80) {
+    Serial.print("UG ");
+    Serial.print(buf[0] & (~0x80), DEC);
+  }
+  else {
+    Serial.print("SG ");
+    Serial.print(buf[0], DEC);
+  }
+  Serial.print("\t");
+
+  Serial.print(buf[1], DEC);
+  Serial.print("\t\t");
+  if (buf[3] > 0) {
+    printSignature(buf + 4, buf[3]);
+  }
+  else {
+    Serial.print("NONE");
+  }
+  Serial.println("\r\n");
+}
+
+void moveServo(Servo& servo, int& currentAngle, int targetAngle) {
+  if (currentAngle < targetAngle) {
+    for (int i = currentAngle; i <= targetAngle; i++) {
+      servo.write(i);
+      delay(15);
+    }
+  } else if (currentAngle > targetAngle) {
+    for (int i = currentAngle; i >= targetAngle; i--) {
+      servo.write(i);
+      delay(15);
+    }
+  }
+  currentAngle = targetAngle;
+}
+
+void processCommand(const String& command) {
+  static int flag = 0;
+  static int p1, t1, w1, b1, e1, cs1;
+  static String input;
+
+  for (int i = 0; i < command.length(); ++i) {
+    char c1 = command[i];
+
+    if (c1 == 'P' || flag == 1) {
+      if (c1 == 'P') {
+        flag = 1;
+        p1 = anglep;
+        anglep = 0;
+        continue;
+      }
+      if ((c1 >= '0') && (c1 <= '9')) {
+        anglep = anglep * 10 + (c1 - '0');
+      } else if (c1 == '\n') {
+        Serial.println('P' + String(anglep));
+        moveServo(palm, p1, anglep);
+        flag = 0;
+      }
+    } else if (c1 == 'T' || flag == 2) {
+      if (c1 == 'T') {
+        flag = 2;
+        t1 = anglet;
+        anglet = 0;
+        continue;
+      }
+      if ((c1 >= '0') && (c1 <= '9')) {
+        anglet = anglet * 10 + (c1 - '0');
+      } else if (c1 == '\n') {
+        Serial.println('T' + String(anglet));
+        moveServo(arm3, t1, anglet);
+        flag = 0;
+      }
+    } else if (c1 == 'B' || flag == 3) {
+      if (c1 == 'B') {
+        flag = 3;
+        b1 = angleb;
+        angleb = 0;
+        continue;
+      }
+      if ((c1 >= '0') && (c1 <= '9')) {
+        angleb = angleb * 10 + (c1 - '0');
+      } else if (c1 == '\n') {
+        Serial.println('B' + String(angleb));
+        moveServo(base, b1, angleb);
+        flag = 0;
+      }
+    } else if (c1 == 'C' || flag == 4) {
+      if (c1 == 'C') {
+        flag = 4;
+        cs1 = anglec;
+        anglec = 0;
+        continue;
+      }
+      if ((c1 >= '0') && (c1 <= '9')) {
+        anglec = anglec * 10 + (c1 - '0');
+      } else if (c1 == '\n') {
+        Serial.println('C' + String(anglec));
+        moveServo(arm1, cs1, anglec);
+        flag = 0;
+      }
+    } else if (c1 == 'E' || flag == 5) {
+      if (c1 == 'E') {
+        flag = 5;
+        e1 = anglee;
+        anglee = 0;
+        continue;
+      }
+      if ((c1 >= '0') && (c1 <= '9')) {
+        anglee = anglee * 10 + (c1 - '0');
+      } else if (c1 == '\n') {
+        Serial.println('E' + String(anglee));
+        moveServo(arm2, e1, anglee);
+        flag = 0;
+      }
+    } else if (c1 == 'W' || flag == 6) {
+      if (c1 == 'W') {
+        flag = 6;
+        w1 = anglew;
+        anglew = 0;
+        continue;
+      }
+      if ((c1 >= '0') && (c1 <= '9')) {
+        anglew = anglew * 10 + (c1 - '0');
+      } else if (c1 == '\n') {
+        Serial.println('W' + String(anglew));
+        moveServo(arm4, w1, anglew);
+        flag = 0;
+      }
+    }
+  }
+}
+
+void setup()
+{
+  /** initialize */
+  myVR.begin(9600);
+
+  Serial.begin(115200);
+  Serial.println("Elechouse Voice Recognition V3 Module\r\nControl LED sample");
+
+  pinMode(led, OUTPUT);
+
+  if (myVR.clear() == 0) {
+    Serial.println("Recognizer cleared.");
+  } else {
+    Serial.println("Not find VoiceRecognitionModule.");
+    Serial.println("Please check connection and restart Arduino.");
+    while (1);
+  }
+
+  if (myVR.load((uint8_t)onRecord) >= 0) {
+    Serial.println("onRecord loaded");
+  }
+
+  if (myVR.load((uint8_t)offRecord) >= 0) {
+    Serial.println("offRecord loaded");
+  }
+  if (myVR.load((uint8_t)liqRecord) >= 0) {
+    Serial.println("liqRecord loaded");
+  }
+  arm1.attach(3);
+  arm2.attach(5);
+  arm3.attach(10);
+  arm4.attach(6);
+  palm.attach(11);
+  base.attach(9);
+  base.write(angleb);
+  arm1.write(anglec);
+  arm2.write(anglee);
+  arm3.write(anglet);
+  arm4.write(anglew);
+  palm.write(anglep);
+  pinMode(12, INPUT);
+}
+
+void loop()
+{
+  int ret;
+  ret = myVR.recognize(buf, 50);
+  if (ret > 0) {
+    switch (buf[1]) {
+      case onRecord:
+        /** turn on LED */
+        sanitizer();
+        digitalWrite(led, HIGH);
+        break;
+      case offRecord:
+        /** turn off LED*/
+        scissor();
+        digitalWrite(led, LOW);
+        break;
+      case liqRecord:
+        /** turn off LED*/
+        mask();
+        Serial.println("Hi");
+        digitalWrite(led, LOW);
+        break;
+      default:
+        Serial.println("Record function undefined");
+        break;
+    }
+    /** voice recognized */
+    printVR(buf);
+  }
+}
+void scissor() {
+  processCommand("B30\n");  // Move base servo to 30 degrees
+  delay(100);               // Wait for 1 second
+  processCommand("P0\n");   // Move palm servo to 0 degrees
+  delay(100);               // Wait for 1 second
+  processCommand("C60\n");  // Move arm1 servo to 60 degrees
+  delay(100);               // Wait for 1 second
+  processCommand("E00\n");  // Move arm1 servo to 20 degrees
+  delay(100);               // Wait for 1 second
+  processCommand("P90\n");   // Move palm servo to 0 degrees
+  delay(100);
+  processCommand("E90\n");  // Move arm1 servo to 20 degrees
+
+  int ir_inp = digitalRead(12);
+  while (ir_inp) {
+    // Wait for 1 second
+    ir_inp = digitalRead(12);
+  }
+
+  processCommand("P0\n");  // Move palm servo to 90 degrees
+  delay(100);               // Wait for 1 second
+  processCommand("B30\n");   // Move base servo to 0 degrees
+  delay(100);               // Wait for 1 second
+  processCommand("C90\n");  // Move arm1 servo to 60 degrees
+  delay(100);               // Wait for 1 second
+  processCommand("E90\n");  // Move arm1 servo to 20 degrees
+}
+void mask() {
+  processCommand("B60\n");  // Move base servo to 30 degrees
+  delay(100);               // Wait for 1 second
+  processCommand("W100\n");  // Move palm servo to 0 degrees
+  delay(100);               // Wait for 1 second
+  processCommand("P0\n");   // Move palm servo to 0 degrees
+  delay(100);               // Wait for 1 second
+  processCommand("C60\n");  // Move arm1 servo to 60 degrees
+  delay(100);               // Wait for 1 second
+  processCommand("E00\n");  // Move arm1 servo to 20 degrees
+  delay(100);               // Wait for 1 second
+  processCommand("P80\n");   // Move palm servo to 0 degrees
+  delay(100);
+  processCommand("E90\n");  // Move arm1 servo to 20 degrees
+  int ir_inp = digitalRead(12);
+  while (ir_inp) {
+    // Wait for 1 second
+    ir_inp = digitalRead(12);
+  }
+
+  processCommand("P0\n");  // Move palm servo to 90 degrees
+  delay(100);               // Wait for 1 second
+  processCommand("B30\n");   // Move base servo to 0 degrees
+  delay(100);               // Wait for 1 second
+  processCommand("C90\n");  // Move arm1 servo to 60 degrees
+  delay(100);               // Wait for 1 second
+  processCommand("E90\n");  // Move arm1 servo to 20 degrees
+}
+void sanitizer() {
+  processCommand("P70\n");  // Move palm servo to 90 degrees
+  delay(100);               // Wait for 1 second
+  processCommand("B0\n");   // Move base servo to 0 degrees
+  delay(100);               // Wait for 1 second
+  processCommand("C60\n");  // Move arm1 servo to 60 degrees
+  delay(100);               // Wait for 1 second
+  processCommand("E20\n");  // Move arm1 servo to 20 degrees
+  delay(2000);              // Wait for 1 second
+
+  processCommand("P0\n");  // Move palm servo to 90 degrees
+  delay(100);
+  processCommand("E90\n");  // Move arm1 servo to 20 degrees
+  delay(100);               // Wait for 1 second
+  // Wait for 1 second
+  processCommand("B30\n");   // Move base servo to 0 degrees
+  delay(100);               // Wait for 1 second
+  processCommand("C90\n");  // Move arm1 servo to 60 degrees
+  delay(100);               // Wait for 1 second
+  processCommand("E90\n");  // Move arm1 servo to 20 degrees
+}
